@@ -3,31 +3,40 @@ pipeline {
     agent any
 
     stages {
-        stage('Checkout Confirmation') {
+        stage('Checkout') {
             steps {
-                echo 'Jenkins pipeline loaded from GitHub'
+                checkout scm
             }
         }
 
-        stage('Build') {
+        stage('Build Docker Image') {
             steps {
-                echo 'Build stage completed'
+                bat 'docker build -t adrios12-app:latest .'
             }
         }
 
-        stage('Test') {
+        stage('Test Docker Image') {
             steps {
-                echo 'Test stage completed'
-            }
-        }
-    }
+                bat 'docker run -d --name adrios12-jenkins-test -p 8082:80 adrios12-app:latest'
 
-    post {
-        success {
-            echo 'CI pipeline completed successfully!'
-        }
-        failure {
-            echo 'CI pipeline failed. Check the console output.'
+                powershell '''
+                    try {
+                        $response = Invoke-WebRequest `
+                            -Uri "http://localhost:8082" `
+                            -UseBasicParsing
+
+                        if ($response.StatusCode -ne 200) {
+                            throw "Web application test failed"
+                        }
+
+                        Write-Output "Docker application test passed!"
+                    }
+                    finally {
+                        docker stop adrios12-jenkins-test
+                        docker rm adrios12-jenkins-test
+                    }
+                '''
+            }
         }
     }
 }
